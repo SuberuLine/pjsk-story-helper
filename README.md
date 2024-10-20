@@ -6,9 +6,10 @@
 ## 📖 使用方法
 
 1. 拉取项目，并确保安装和配置完成Python环境
-2. 在项目目录下创建Python虚拟环境
+2. 在项目目录下创建Python虚拟环境,并激活环境
    ```python
    python -m venv venv
+   .\venv\Scripts\activate
    ```
 3. 安装依赖
    ```python
