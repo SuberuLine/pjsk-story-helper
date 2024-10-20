@@ -17,36 +17,49 @@ READING_STATE = {}
 def main():
     global FIRST_ENTER, PAUSE_EVENT
 
-    if d.info['displayHeight'] != 1080 or d.info['displayWidth'] != 1920:
-        logging.error('请确保分辨率为1920x1080!')
-        exit()
-
-    network_error_checker_thread = threading.Thread(target=network_error_checker, daemon=True)
-    network_error_checker_thread.start()
-
     while True:
-        if PAUSE_EVENT.is_set():
-            time.sleep(1)
-            continue
+        try:
+            time.sleep(3)
 
-        if is_main_page():
-            time.sleep(1)
-            d.click(*COORDINATES['MAIN_PAGE_STORY_BTN'])
-            time.sleep(1)
+            if d.info['displayHeight'] != 1080 or d.info['displayWidth'] != 1920:
+                logging.error('请确保分辨率为1920x1080!')
+                exit()
 
-        if is_story_page():
-            time.sleep(1)
-            d.click(*COORDINATES['MAIN_STORY_BTN'])
-            time.sleep(1)
+            network_error_checker_thread = threading.Thread(target=network_error_checker, daemon=True)
+            network_error_checker_thread.start()
 
-        if is_story_home():
-            if FIRST_ENTER:
-                set_unreaded_filter()
-                FIRST_ENTER = False
-            save_reading_state()  # 保存当前阅读状态
+            while True:
+                if PAUSE_EVENT.is_set():
+                    time.sleep(1)
+                    continue
 
-        start_story()
-        d.click(*COORDINATES['FORWARD_BUTTON'])
+                if is_main_page():
+                    time.sleep(1)
+                    d.click(*COORDINATES['MAIN_PAGE_STORY_BTN'])
+                    time.sleep(1)
+
+                if is_story_page():
+                    time.sleep(1)
+                    d.click(*COORDINATES['MAIN_STORY_BTN'])
+                    time.sleep(1)
+
+                if is_story_home():
+                    if FIRST_ENTER:
+                        set_unreaded_filter()
+                        FIRST_ENTER = False
+                    save_reading_state()
+
+                if not start_story():
+                    logging.info("未找到开始按钮，重新执行主循环...")
+                    d.click(*COORDINATES['FORWARD_BUTTON'])
+                    break
+
+                d.click(*COORDINATES['FORWARD_BUTTON'])
+
+        except Exception as e:
+            logging.error(f"发生异常: {e}")
+            logging.info("5秒后重新启动主循环...")
+            time.sleep(5)
 
 def check_network_error_retryable():
     # 检查网络错误是否可重试
@@ -113,8 +126,9 @@ def is_story_page():
         return False
 
 def is_story_home():
-    utils.capture_region(d, 8, 440, 136, 640, "./img/story_home.png")
-    similarity = processer.compare_images("./img/story_home.png", "./img/resources/story_home.png")
+    utils.capture_region(d, 1047, 34, 1113, 100, "./img/story_home.png")
+    similarity = processer.compare_images("./img/story_home.png", "./img/resources/ticket.png")
+    logging.info(f"当前故事页相似度: {similarity * 100:.2f}%")
 
     if similarity > STORY_HOME_SIMILARITY_THRESHOLD:
         logging.info("当前为主线故事页")
@@ -123,7 +137,6 @@ def is_story_home():
         return False
     
 def start_story():
-    is_unreaded = check_unreaded()
     d.click(*COORDINATES['START_STORY'])
     time.sleep(CLICK_INTERVAL)
     for _ in range(SWIPE_COUNT):
@@ -132,31 +145,33 @@ def start_story():
     time.sleep(CLICK_INTERVAL)
     d.screenshot("./img/current_story_template.png")
     time.sleep(CLICK_INTERVAL)
-    if is_unreaded:
-        click_from_bottom_to_top()
-    else:
-        d.click(*COORDINATES['READING_END_CLICK'])
-    time.sleep(CLICK_INTERVAL)
-    d.click(*COORDINATES['CONTINUOUS_READ'])
-    time.sleep(CLICK_INTERVAL)
-    d.click(*COORDINATES['NO_VOICE_ENTER'])
-    time.sleep(STORY_START_WAIT_TIME)
-    logging.info("开始阅读")
 
-    last_click_time = time.time()
-    while True:
-        if PAUSE_EVENT.is_set():
-            time.sleep(1)
-            continue
-        d.click(*COORDINATES['READING_CLICK'])
-        current_time = time.time()
-        # 如果当前时间与上次点击时间差大于3秒，则检查是否阅读结束
-        if current_time - last_click_time > 3:
-            if not is_reading():
-                break
-            last_click_time = current_time
-    logging.info("阅读结束")
-    time.sleep(1)
+    if click_from_bottom_to_top():
+        time.sleep(CLICK_INTERVAL)
+        d.click(*COORDINATES['CONTINUOUS_READ'])
+        time.sleep(CLICK_INTERVAL)
+        d.click(*COORDINATES['NO_VOICE_ENTER'])
+        time.sleep(STORY_START_WAIT_TIME)
+        logging.info("开始阅读")
+        
+        last_click_time = time.time()
+        while True:
+            if PAUSE_EVENT.is_set():
+                time.sleep(1)
+                continue
+            d.click(*COORDINATES['READING_CLICK'])
+            current_time = time.time()
+            if current_time - last_click_time > READING_CHECK_INTERVAL:
+                if not is_reading():
+                    break
+                last_click_time = current_time
+        logging.info("阅读结束")
+        time.sleep(1)
+        return True
+    else:
+        logging.info("未找到开始按钮，准备重置流程...")
+        time.sleep(3)
+        return False
 
 def is_reading():
     d.screenshot("./img/current_story_progress.png")
@@ -167,12 +182,6 @@ def is_reading():
     else:
         logging.info("阅读结束")
         return False
-    
-def check_unreaded():
-    utils.capture_region(d, 666, 428, 698, 460, "./img/unreaded_icon.png")
-    similarity = processer.compare_images("./img/unreaded_icon.png", "./img/resources/unreaded_icon.png")
-    logging.info(f"当前未读进度概率: {similarity * 100:.2f}%")
-    return similarity > UNREADED_ICON_SIMILARITY_THRESHOLD
 
 def click_from_bottom_to_top():
     x, y = UNREADED_STORY_CLICK_START
