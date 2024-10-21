@@ -17,6 +17,9 @@ READING_STATE = {}
 def main():
     global FIRST_ENTER, PAUSE_EVENT
 
+    network_error_checker_thread = threading.Thread(target=network_error_checker, daemon=True)
+    network_error_checker_thread.start()
+
     while True:
         try:
             time.sleep(3)
@@ -24,9 +27,6 @@ def main():
             if d.info['displayHeight'] != 1080 or d.info['displayWidth'] != 1920:
                 logging.error('请确保分辨率为1920x1080!')
                 exit()
-
-            network_error_checker_thread = threading.Thread(target=network_error_checker, daemon=True)
-            network_error_checker_thread.start()
 
             while True:
                 if PAUSE_EVENT.is_set():
@@ -52,6 +52,7 @@ def main():
                 if not start_story():
                     logging.info("未找到开始按钮，重新执行主循环...")
                     d.click(*COORDINATES['FORWARD_BUTTON'])
+                    time.sleep(CLICK_INTERVAL)
                     break
 
                 d.click(*COORDINATES['FORWARD_BUTTON'])
